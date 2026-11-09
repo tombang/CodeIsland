@@ -166,10 +166,14 @@ enum SettingsKey {
     static let pushChannels = "pushChannels"  // JSON [PushChannelConfig]; empty = nothing configured
 
     // Feishu long-connection approvals. The App Secret is not a default: it
-    // lives in the Keychain (FeishuSecretStore).
+    // lives in ~/.codeisland/feishu-app-secret (FeishuSecretStore).
     static let feishuApprovalEnabled = "feishuApprovalEnabled"
     static let feishuApprovalAppID = "feishuApprovalAppID"
     static let feishuApprovalOpenID = "feishuApprovalOpenID"
+    /// When true, a bound Feishu chat may start one Codex task with /task.
+    static let feishuTaskEnabled = "feishuTaskEnabled"
+    /// Fixed directory for Feishu-started Codex tasks. Not taken from chat text.
+    static let feishuTaskCwd = "feishuTaskCwd"
 }
 
 struct SettingsDefaults {
@@ -272,6 +276,8 @@ struct SettingsDefaults {
 
     static let feishuApprovalEnabled = false
     static let feishuApprovalAppID = ""
+    static let feishuTaskEnabled = false
+    static let feishuTaskCwd = ""
 }
 
 @MainActor
@@ -360,6 +366,8 @@ class SettingsManager {
             SettingsKey.pushChannels: SettingsDefaults.pushChannels,
             SettingsKey.feishuApprovalEnabled: SettingsDefaults.feishuApprovalEnabled,
             SettingsKey.feishuApprovalAppID: SettingsDefaults.feishuApprovalAppID,
+            SettingsKey.feishuTaskEnabled: SettingsDefaults.feishuTaskEnabled,
+            SettingsKey.feishuTaskCwd: SettingsDefaults.feishuTaskCwd,
         ])
     }
 

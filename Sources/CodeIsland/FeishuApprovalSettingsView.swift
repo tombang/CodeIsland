@@ -8,6 +8,8 @@ struct FeishuApprovalSettingsSection: View {
     @AppStorage(SettingsKey.feishuApprovalEnabled) private var enabled = SettingsDefaults.feishuApprovalEnabled
     @AppStorage(SettingsKey.feishuApprovalAppID) private var appID = SettingsDefaults.feishuApprovalAppID
     @State private var secret = ""
+    @AppStorage(SettingsKey.feishuTaskEnabled) private var taskEnabled = SettingsDefaults.feishuTaskEnabled
+    @AppStorage(SettingsKey.feishuTaskCwd) private var taskCwd = SettingsDefaults.feishuTaskCwd
 
     var body: some View {
         Section(l10n["feishu_approval_title"]) {
@@ -64,6 +66,16 @@ struct FeishuApprovalSettingsSection: View {
                 Text(l10n["feishu_approval_note"])
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle(l10n["feishu_task_enable"], isOn: $taskEnabled)
+                if taskEnabled {
+                    TextField(l10n["feishu_task_cwd"], text: $taskCwd)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .autocorrectionDisabled(true)
+                    Text(l10n["feishu_task_note"])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .onAppear { center.refreshIdentity() }

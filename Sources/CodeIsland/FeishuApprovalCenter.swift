@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import CodeIslandCore
 
 /// Outbound Feishu long connection for Codex permission cards.
@@ -19,6 +18,7 @@ final class FeishuApprovalCenter: ObservableObject {
     @Published private(set) var online = false
 
     private weak var appState: AppState?
+    private let tasks = FeishuCodexTaskRunner()
     private var process: Process?
     private var input: FileHandle?
     private var splitter = LineSplitter()
@@ -29,6 +29,9 @@ final class FeishuApprovalCenter: ObservableObject {
 
     private init() {
         refreshIdentity()
+        tasks.onCard = { [weak self] card, messageID, token in
+            self?.sendTaskCard(card, messageID: messageID, token: token)
+        }
         if statusText.isEmpty {
             statusText = Self.text(
                 "未连接。填写企业自建应用的 App ID 和 App Secret 后保存。",
@@ -85,13 +88,13 @@ final class FeishuApprovalCenter: ObservableObject {
         let typed = secretInput.trimmingCharacters(in: .whitespacesAndNewlines)
         if !typed.isEmpty {
             guard FeishuSecretStore.save(typed) else {
-                statusText = Self.text("钥匙串没有收下 App Secret。", "Keychain did not store the App Secret.")
+                statusText = Self.text("没有保存 App Secret。", "Could not save the App Secret.")
                 return
             }
         } else if FeishuSecretStore.load() == nil {
             statusText = Self.text(
-                "请填写 App Secret。它只写入钥匙串，不进配置文件。",
-                "Enter the App Secret. It is stored in the Keychain, not in preferences."
+                "请填写 App Secret。它只保存在本机，不进配置文件。",
+                "Enter the App Secret. It stays on this Mac and is not saved in preferences."
             )
             return
         }
@@ -106,7 +109,7 @@ final class FeishuApprovalCenter: ObservableObject {
         FeishuSecretStore.delete()
         hasSecret = false
         stop()
-        statusText = Self.text("已从钥匙串删除 App Secret。", "Removed the App Secret from the Keychain.")
+        statusText = Self.text("已删除本机保存的 App Secret。", "Removed the saved App Secret.")
     }
 
     func armBind() {
@@ -184,7 +187,7 @@ final class FeishuApprovalCenter: ObservableObject {
             return
         }
         guard let secret = FeishuSecretStore.load() else {
-            statusText = Self.text("钥匙串里没有 App Secret。", "No App Secret is in the Keychain.")
+            statusText = Self.text("还没有保存 App Secret。", "No App Secret has been saved.")
             return
         }
         let appID = (UserDefaults.standard.string(forKey: SettingsKey.feishuApprovalAppID) ?? "")
@@ -305,6 +308,12 @@ final class FeishuApprovalCenter: ObservableObject {
             )
         case "card_action":
             apply(object)
+        case "task_command":
+            handleTaskCommand(object)
+        case "task_card_sent":
+            let id = (object["message_id"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let token = object["token"] as? String ?? ""
+            if !id.isEmpty { tasks.noteCardID(id, token: token) }
         case "log":
             if let message = object["message"] as? String, !message.isEmpty {
                 statusText = message
@@ -312,6 +321,37 @@ final class FeishuApprovalCenter: ObservableObject {
         default:
             break
         }
+    }
+
+    private func handleTaskCommand(_ object: [String: Any]) {
+        let openID = (object["open_id"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let paired = (UserDefaults.standard.string(forKey: SettingsKey.feishuApprovalOpenID) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !paired.isEmpty, openID == paired else { return }
+        let command = object["command"] as? String ?? ""
+        guard command == "task" || command == "stop" || command == "status" || command == "cd" else { return }
+        let text = object["text"] as? String ?? ""
+        tasks.handle(command: command, text: text)
+    }
+
+    private func sendTaskCard(_ card: FeishuTaskCard, messageID: String?, token: String) {
+        let markdown = PushMessageFormatter.clean(card.markdown, limit: 3500) ?? card.markdown
+        var object: [String: Any] = [
+            "op": "task_card",
+            "title": card.title,
+            "template": card.template,
+            "markdown": markdown,
+            "token": token,
+        ]
+        if let messageID, !messageID.isEmpty {
+            object["message_id"] = messageID
+        }
+        send(object)
+    }
+
+    private func sendUserText(_ message: String) {
+        let clean = PushMessageFormatter.clean(message, limit: 1800) ?? message
+        send(["op": "send_text", "text": clean])
     }
 
     private func apply(_ object: [String: Any]) {
@@ -388,42 +428,35 @@ private final class LineSplitter: @unchecked Sendable {
 }
 
 enum FeishuSecretStore {
-    private static let service = "com.codeisland.app.feishu-approval"
-    private static let account = "app-secret"
+    /// Kept out of the Keychain on purpose. Each local rebuild is ad-hoc
+    /// signed, and macOS asks for the login password again whenever the
+    /// signature changes. This file is readable only by the current user.
+    private static var fileURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".codeisland/feishu-app-secret")
+    }
 
     static func save(_ secret: String) -> Bool {
-        delete()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: Data(secret.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        let url = fileURL
+        let directory = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try Data(secret.utf8).write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return true
+        } catch {
+            return false
+        }
     }
 
     static func load() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
         let secret = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return secret?.isEmpty == false ? secret : nil
     }
 
     static func delete() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
+        try? FileManager.default.removeItem(at: fileURL)
     }
 }

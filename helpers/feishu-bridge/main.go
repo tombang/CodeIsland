@@ -108,6 +108,11 @@ func (b *bridge) handleLine(raw []byte) {
 		id, _ := msg["request_id"].(string)
 		decision, _ := msg["decision"].(string)
 		b.markResolved(strings.TrimSpace(id), strings.TrimSpace(decision))
+	case "send_text":
+		text, _ := msg["text"].(string)
+		b.sendText(text)
+	case "task_card":
+		b.sendTaskCard(msg)
 	default:
 		b.emitLog("ignored unknown control op")
 	}
@@ -239,7 +244,16 @@ func (b *bridge) onMessage(_ context.Context, event *larkim.P2MessageReceiveV1) 
 	b.mu.Unlock()
 	switch {
 	case paired != "" && openID == paired:
-		b.reply(*message.MessageId, "审批只能点卡片上的「允许一次」或「拒绝」。文字回复不会执行命令。")
+		if command, text, ok := taskCommand(message.MessageType, message.Content); ok {
+			b.emit(map[string]any{
+				"op":      "task_command",
+				"command": command,
+				"text":    text,
+				"open_id": openID,
+			})
+			return nil
+		}
+		b.reply(*message.MessageId, "审批只能点卡片上的「允许一次」或「拒绝」。换目录用 /cd，发起用 /task，停止用 /stop，查看用 /status。其它文字不会执行命令。")
 	case paired != "" && openID != paired:
 		b.reply(*message.MessageId, "这个机器人只给已绑定的飞书账号发审批。")
 	case arm:
@@ -377,6 +391,101 @@ func (b *bridge) markResolved(requestID, decision string) {
 	}
 }
 
+func (b *bridge) sendTaskCard(msg map[string]any) {
+	title, _ := msg["title"].(string)
+	template, _ := msg["template"].(string)
+	markdown, _ := msg["markdown"].(string)
+	messageID, _ := msg["message_id"].(string)
+	title = clip(strings.TrimSpace(title), 40)
+	markdown = clip(strings.TrimSpace(markdown), 4000)
+	if title == "" {
+		title = "CodeIsland"
+	}
+	if template == "" {
+		template = "blue"
+	}
+	if markdown == "" {
+		return
+	}
+	content, err := json.Marshal(taskStatusCard(title, template, markdown))
+	if err != nil {
+		return
+	}
+	b.mu.Lock()
+	openID := b.openID
+	api := b.api
+	b.mu.Unlock()
+	if api == nil || openID == "" {
+		return
+	}
+	messageID = strings.TrimSpace(messageID)
+	if messageID != "" {
+		req := larkim.NewPatchMessageReqBuilder().
+			MessageId(messageID).
+			Body(larkim.NewPatchMessageReqBodyBuilder().Content(string(content)).Build()).
+			Build()
+		resp, err := api.Im.Message.Patch(context.Background(), req)
+		if err == nil && resp != nil && resp.Success() {
+			return
+		}
+	}
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(larkim.CreateMessageV1ReceiveIDTypeOpenId).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			ReceiveId(openID).
+			MsgType(larkim.MsgTypeInteractive).
+			Content(string(content)).
+			Build()).
+		Build()
+	resp, err := api.Im.Message.Create(context.Background(), req)
+	if err != nil || resp == nil || !resp.Success() || resp.Data == nil || resp.Data.MessageId == nil {
+		b.emitLog("task card send failed")
+		return
+	}
+	token, _ := msg["token"].(string)
+	b.emit(map[string]any{"op": "task_card_sent", "message_id": *resp.Data.MessageId, "token": token})
+}
+
+func taskStatusCard(title, template, markdown string) map[string]any {
+	return map[string]any{
+		"config": map[string]any{"wide_screen_mode": true},
+		"header": map[string]any{
+			"template": template,
+			"title":    map[string]any{"tag": "plain_text", "content": title},
+		},
+		"elements": []any{
+			map[string]any{"tag": "markdown", "content": markdown},
+		},
+	}
+}
+
+func (b *bridge) sendText(text string) {
+	text = clip(strings.TrimSpace(text), 3500)
+	if text == "" {
+		return
+	}
+	b.mu.Lock()
+	openID := b.openID
+	api := b.api
+	b.mu.Unlock()
+	if api == nil || openID == "" {
+		return
+	}
+	content, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return
+	}
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(larkim.CreateMessageV1ReceiveIDTypeOpenId).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			ReceiveId(openID).
+			MsgType(larkim.MsgTypeText).
+			Content(string(content)).
+			Build()).
+		Build()
+	_, _ = api.Im.Message.Create(context.Background(), req)
+}
+
 func (b *bridge) reply(messageID, text string) {
 	b.mu.Lock()
 	api := b.api
@@ -417,6 +526,48 @@ func (b *bridge) emitLocked(payload map[string]any) {
 		return
 	}
 	_, _ = os.Stdout.Write(append(encoded, '\n'))
+}
+
+func taskCommand(messageType, content *string) (string, string, bool) {
+	if messageType != nil && *messageType != "text" {
+		return "", "", false
+	}
+	if content == nil {
+		return "", "", false
+	}
+	var payload struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(*content), &payload); err != nil {
+		return "", "", false
+	}
+	line := strings.TrimSpace(payload.Text)
+	switch {
+	case line == "/stop" || line == "/停止":
+		return "stop", "", true
+	case line == "/status" || line == "/状态" || line == "/pwd" || line == "/当前":
+		return "status", "", true
+	case line == "/cd" || line == "/目录":
+		return "cd", "", true
+	case strings.HasPrefix(line, "/cd "):
+		return "cd", strings.TrimSpace(strings.TrimPrefix(line, "/cd ")), true
+	case strings.HasPrefix(line, "/目录 "):
+		return "cd", strings.TrimSpace(strings.TrimPrefix(line, "/目录 ")), true
+	case strings.HasPrefix(line, "/task "):
+		text := strings.TrimSpace(strings.TrimPrefix(line, "/task "))
+		if text == "" {
+			return "", "", false
+		}
+		return "task", text, true
+	case strings.HasPrefix(line, "/任务 "):
+		text := strings.TrimSpace(strings.TrimPrefix(line, "/任务 "))
+		if text == "" {
+			return "", "", false
+		}
+		return "task", text, true
+	default:
+		return "", "", false
+	}
 }
 
 func parseDecision(value map[string]any) (string, string, bool) {
