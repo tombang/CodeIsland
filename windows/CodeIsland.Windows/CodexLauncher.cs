@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 
 namespace CodeIsland.Windows;
 
@@ -31,14 +32,14 @@ public static class CodexLauncher
         var full = Path.GetFullPath(candidate);
         var extension = Path.GetExtension(full);
         if (extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
-            return new CodexLaunch(full, []);
+            return new CodexLaunch(full, Array.Empty<string>());
         if (!extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase)
             && !extension.Equals(".bat", StringComparison.OrdinalIgnoreCase))
             return null;
 
         var directory = Path.GetDirectoryName(full)!;
         var sibling = Path.Combine(directory, "codex.exe");
-        if (File.Exists(sibling)) return new CodexLaunch(sibling, []);
+        if (File.Exists(sibling)) return new CodexLaunch(sibling, Array.Empty<string>());
 
         var package = Path.Combine(directory, "node_modules", "@openai", "codex");
         var nested = FindNestedExe(package);
@@ -49,7 +50,7 @@ public static class CodexLauncher
         var node = Path.Combine(directory, "node.exe");
         if (!File.Exists(node))
             node = Where("node").FirstOrDefault(path => path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) ?? "";
-        return File.Exists(node) ? new CodexLaunch(Path.GetFullPath(node), [script]) : null;
+        return File.Exists(node) ? new CodexLaunch(Path.GetFullPath(node), new[] { script }) : null;
     }
 
     private static IEnumerable<string> CommonPaths()
@@ -98,7 +99,7 @@ public static class CodexLauncher
     private static string? FindNestedExe(string root)
     {
         if (!Directory.Exists(root)) return null;
-        var queue = new Queue<(string Path, int Depth)>();
+        var queue = new Queue<(string Folder, int Depth)>();
         queue.Enqueue((root, 0));
         while (queue.Count > 0)
         {

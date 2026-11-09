@@ -297,6 +297,11 @@ public sealed class FeishuController : IDisposable
         _ = RestartLater(delay, token);
     }
 
+    private void Queue(Action action)
+    {
+        if (!_dispatcher.HasShutdownStarted) _dispatcher.BeginInvoke(action);
+    }
+
     private async Task RestartLater(int seconds, int token)
     {
         try
@@ -307,11 +312,12 @@ public sealed class FeishuController : IDisposable
         {
             return;
         }
-        _dispatcher.BeginInvoke(() =>
+        Queue(StartBridgeIfCurrent);
+        void StartBridgeIfCurrent()
         {
             if (token != _generation || _bridge.IsRunning || !_settings.FeishuEnabled) return;
             StartBridge();
-        });
+        }
     }
 
     private void OnBridgeMessage(JsonElement message)
