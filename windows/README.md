@@ -33,6 +33,8 @@ This is a Windows adaptation of the original macOS [CodeIsland](https://github.c
 - **Global shortcuts** — Configurable shortcuts for toggling the panel and resolving permission requests
 - **Hook management** — Detect, install, repair, remove, and health-check supported agent hooks
 - **Local IPC** — User-scoped Windows named pipes keep agent events on the local machine
+- **Feishu remote approval** — A bound private chat can allow once or deny a permission request. Text is never an approval, and Feishu cannot choose Always allow
+- **Feishu Codex tasks** — `/cd`, `/task`, `/stop`, and `/status` run one local `codex exec` turn. Commands Codex wants to run still come back as approval cards
 
 ## Supported Tools
 
@@ -97,6 +99,19 @@ The custom dark settings window includes:
 - **Hooks** — Tool discovery, installation, repair, removal, and health status
 - **Shortcuts** — Configurable global keyboard shortcuts
 - **About** — Version and application information
+
+### Feishu
+
+**Settings → Feishu** connects the same outbound helper used on macOS.
+
+1. Create a Feishu self-built app and paste its App ID. The App Secret is stored only in `%USERPROFILE%\.codeisland\feishu-app-secret`, not in `settings.json`.
+2. Save, then choose **Start binding** and send the bot one private message. Text does not approve anything. Confirm **Bind this account**.
+3. Permission requests show **Allow once** and **Deny**. Approving or denying on the PC updates the same card. Disconnects, other accounts, and repeated taps do not allow a command.
+4. Turn on Codex tasks to use `/cd`, `/task`, `/stop`, and `/status`. `/cd` remembers a directory; `/task C:\repo do this` switches to an existing directory for that task and remembers it. Only one task runs at a time.
+5. Put `API_GATEWAY_KEY` (or any `env_key` from `%USERPROFILE%\.codex\config.toml`) in the user environment or a profile file. The value is passed to Codex and is never written to Feishu or the log.
+6. One Feishu app keeps one long connection. Quit the Mac app before connecting Windows with the same app, or use a second app.
+
+The release zip from **Build Windows x64** includes `feishu-bridge.exe` beside `CodeIsland.Windows.exe`.
 
 ## Keyboard Shortcuts
 

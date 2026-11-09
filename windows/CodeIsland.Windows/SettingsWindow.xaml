@@ -121,6 +121,30 @@
                 <TabItem Header="SHORTCUTS"><Grid Margin="18"><Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="52"/><RowDefinition Height="52"/><RowDefinition Height="52"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <TextBlock Text="Toggle panel" VerticalAlignment="Center"/><TextBox x:Name="ToggleShortcutBox" Grid.Column="1" Margin="7"/><TextBlock Grid.Row="1" Text="Approve request" VerticalAlignment="Center"/><TextBox x:Name="ApproveShortcutBox" Grid.Row="1" Grid.Column="1" Margin="7"/><TextBlock Grid.Row="2" Text="Deny request" VerticalAlignment="Center"/><TextBox x:Name="DenyShortcutBox" Grid.Row="2" Grid.Column="1" Margin="7"/><TextBlock x:Name="ShortcutStatus" Grid.Row="3" Grid.ColumnSpan="2" Foreground="#FF85858C" Margin="0,13,0,0" Text="Format: Ctrl+Shift+I, Alt+Shift+A, or Win+Ctrl+D"/>
                 </Grid></TabItem>
+                <TabItem Header="FEISHU"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="18">
+                    <TextBlock Text="FEISHU REMOTE APPROVAL" FontWeight="Bold" Foreground="#FF9A9AA0"/>
+                    <TextBlock Text="Send permission requests to a bound Feishu private chat." Margin="0,8,0,0" TextWrapping="Wrap"/>
+                    <TextBlock Text="Text is never an approval, and Feishu cannot choose Always allow." Foreground="#FF85858C" Margin="0,4,0,12" TextWrapping="Wrap"/>
+                    <CheckBox x:Name="FeishuEnabledBox" Content="Send permission requests to Feishu" Margin="0,0,0,14"/>
+                    <TextBlock Text="APP ID" FontWeight="Bold" Foreground="#FF9A9AA0"/>
+                    <TextBox x:Name="FeishuAppIdBox" Width="420" HorizontalAlignment="Left" Margin="0,8,0,12"/>
+                    <TextBlock Text="APP SECRET" FontWeight="Bold" Foreground="#FF9A9AA0"/>
+                    <PasswordBox x:Name="FeishuSecretBox" Width="420" HorizontalAlignment="Left" Margin="0,8,0,6" Background="#FF141416" Foreground="#FFF1F1F3" CaretBrush="#FF39E46E" BorderBrush="#FF303034"/>
+                    <TextBlock x:Name="FeishuSecretHint" Text="The App Secret stays in your user profile, not in settings.json." Foreground="#FF85858C" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,8">
+                        <Button x:Name="FeishuClearSecretButton" Content="CLEAR SECRET" Click="OnFeishuClearSecret" Margin="0,0,8,0"/>
+                        <Button x:Name="FeishuArmButton" Content="START BINDING" Click="OnFeishuArm" Margin="0,0,8,0"/>
+                        <Button x:Name="FeishuBindButton" Content="BIND THIS ACCOUNT" Click="OnFeishuBind" Margin="0,0,8,0" Visibility="Collapsed"/>
+                        <Button x:Name="FeishuRebindButton" Content="BIND AGAIN" Click="OnFeishuRebind" Margin="0,0,8,0" Visibility="Collapsed"/>
+                        <Button x:Name="FeishuUnbindButton" Content="UNBIND" Click="OnFeishuUnbind" Visibility="Collapsed"/>
+                    </StackPanel>
+                    <TextBlock x:Name="FeishuCandidateText" FontFamily="Cascadia Mono, Consolas" Foreground="#FF85858C" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="FeishuStatusText" Text="Not connected." Foreground="#FF85858C" Margin="0,8,0,16" TextWrapping="Wrap"/>
+                    <CheckBox x:Name="FeishuTaskEnabledBox" Content="Allow Feishu to start a Codex task" Margin="0,0,0,12"/>
+                    <TextBlock Text="DEFAULT TASK DIRECTORY" FontWeight="Bold" Foreground="#FF9A9AA0"/>
+                    <TextBox x:Name="FeishuTaskDirectoryBox" Width="420" HorizontalAlignment="Left" Margin="0,8,0,8"/>
+                    <TextBlock Text="Use /cd to change it, /task to start, /stop to stop, and /status to look." Foreground="#FF85858C" TextWrapping="Wrap"/>
+                </StackPanel></ScrollViewer></TabItem>
                 <TabItem Header="ABOUT"><StackPanel Margin="18"><Image x:Name="AboutAppIcon" Width="72" Height="72" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="NearestNeighbor"/><TextBlock Text="CODEISLAND FOR WINDOWS" FontSize="21" FontWeight="Bold" Foreground="{StaticResource Green}" Margin="0,14,0,0"/><TextBlock Text="Version 0.2.1" Margin="0,8,0,0"/><TextBlock Text="Real-time AI coding agent status panel." Foreground="#FF85858C" Margin="0,14,0,0"/><TextBlock Text="MIT License" Margin="0,18,0,0"/></StackPanel></TabItem>
             </TabControl>
 

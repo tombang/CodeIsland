@@ -38,6 +38,7 @@ public partial class App : Application
     private readonly AppLogger _logger = new();
     public DesktopSessionStore Sessions { get; private set; } = null!;
     private AppSettings _settings = new();
+    private FeishuController? _feishu;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -64,6 +65,8 @@ public partial class App : Application
         L10n.Apply(Resources, _settings.Language);
         Sessions = new DesktopSessionStore(_settings.MaxVisibleSessions, _settings.EventHistoryLimit);
         _sounds.Enabled = _settings.SoundEnabled;
+        _feishu = new FeishuController(Sessions, _logger, PersistFeishuSettings, Dispatcher, _settings);
+        _feishu.Apply(_settings);
         StartPipeServer();
         Sessions.EventApplied += (_, agentEvent) =>
         {
@@ -163,7 +166,7 @@ public partial class App : Application
             return;
         }
         _settingsWindow = new SettingsWindow(_settingsStore, _settings, ApplySettings,
-            () => _window?.HotKeyStatus ?? "Shortcuts are unavailable.");
+            () => _window?.HotKeyStatus ?? "Shortcuts are unavailable.", _feishu);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
     }
@@ -176,6 +179,22 @@ public partial class App : Application
         return _settings.SoundEnabled;
     }
 
+    private void PersistFeishuSettings(AppSettings settings)
+    {
+        // Merge only the Feishu fields. /cd can arrive while the tray has
+        // changed another setting, and this must not write that stale copy back.
+        _settings = _settings with
+        {
+            FeishuEnabled = settings.FeishuEnabled,
+            FeishuAppId = settings.FeishuAppId,
+            FeishuOpenId = settings.FeishuOpenId,
+            FeishuTaskEnabled = settings.FeishuTaskEnabled,
+            FeishuTaskDirectory = settings.FeishuTaskDirectory
+        };
+        _settings = _settings.Validate();
+        _settingsStore.Save(_settings);
+    }
+
     private void ApplySettings(AppSettings settings)
     {
         _settings = settings;
@@ -183,6 +202,7 @@ public partial class App : Application
         L10n.Apply(Resources, settings.Language);
         RebuildTrayMenu();
         _window?.ApplySettings(settings);
+        _feishu?.Apply(settings);
         if (!settings.HideInFullscreen && _fullscreenSuppressed && _window is not null)
         {
             _window.Show();
@@ -225,7 +245,11 @@ public partial class App : Application
                 if (message.Event.Type is AgentEventType.PermissionRequest or AgentEventType.Question)
                 {
                     Task<PipeMessage>? responseTask = null;
-                    Dispatcher.Invoke(() => { responseTask = Sessions.WaitForResponseAsync(message.Event, cancellationToken); });
+                    Dispatcher.Invoke(() =>
+                    {
+                        responseTask = Sessions.WaitForResponseAsync(message.Event, cancellationToken);
+                        if (message.Event.Type == AgentEventType.PermissionRequest) _feishu?.Offer(message.Event);
+                    });
                     return await responseTask!;
                 }
                 Dispatcher.Invoke(() => Sessions.Apply(message.Event));
@@ -262,6 +286,8 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _pipeStop?.Cancel();
+        _feishu?.Dispose();
+        _feishu = null;
         _codexTailer?.Dispose();
         _logger.Info("Application exit.");
         _cleanupTimer?.Stop();

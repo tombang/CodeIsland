@@ -33,6 +33,8 @@ CodeIsland for Windows 是一款置顶显示的紧凑型 AI 编程智能体状�
 - **全局快捷键** — 支持自定义面板切换、允许和拒绝快捷键
 - **Hook 管理** — 检测、安装、修复、卸载并检查智能体 Hook 健康状态
 - **本地 IPC** — 使用按 Windows 用户隔离的命名管道传递本地事件
+- **飞书远程审批** — 已绑定的私聊可以「允许一次」或「拒绝」。文字不能批准，飞书上也没有「始终允许」
+- **飞书 Codex 任务** — `/cd`、`/task`、`/stop`、`/status` 在本机跑一轮 `codex exec`。Codex 要执行的命令仍会回到审批卡片
 
 ## 支持的工具
 
@@ -96,6 +98,19 @@ Codex Desktop 还支持实时会话记录恢复。即使没有传统 CLI Hook，
 - **Hooks** — 工具检测、安装、修复、卸载与健康状态
 - **Shortcuts** — 自定义全局快捷键
 - **About** — 版本和应用信息
+
+### 飞书
+
+**设置 → 飞书** 使用和 macOS 相同的出站 helper。
+
+1. 填写企业自建应用的 App ID。App Secret 只保存在 `%USERPROFILE%\.codeisland\feishu-app-secret`，不进 `settings.json`，也不进钥匙串。
+2. 保存后点「开始绑定」，用要绑定的飞书给机器人发一条私聊。文字不会批准命令。再点「绑定这个账号」。
+3. 权限请求只有「允许一次」和「拒绝」。在电脑上允许或拒绝后，同一张卡片会更新。断线、别人的账号、重复点击都不会允许。
+4. 打开「允许飞书发起 Codex 任务」后，可以用 `/cd`、`/task`、`/stop`、`/status`。`/cd` 会记住目录；`/task C:\repo 要做的事` 会在这个已存在的目录执行，并把它记成当前目录。一次只跑一个任务。
+5. 把 `API_GATEWAY_KEY`（或 `%USERPROFILE%\.codex\config.toml` 里 `env_key` 指向的变量）设成用户环境变量，或写在 PowerShell profile 里。值会交给 Codex，但不会写进飞书或日志。
+6. 同一个飞书应用只能保持一条长连接。Windows 要用同一个应用时，先退出 Mac 上的 CodeIsland，或者另建一个应用。
+
+**Build Windows x64** 打出来的 zip 会带上 `feishu-bridge.exe`，放在 `CodeIsland.Windows.exe` 旁边。
 
 ## 快捷键
 

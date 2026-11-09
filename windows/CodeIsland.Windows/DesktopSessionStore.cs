@@ -15,6 +15,8 @@ public sealed class DesktopSessionStore : INotifyPropertyChanged
     public ObservableCollection<SessionSnapshot> Sessions { get; } = [];
     public ObservableCollection<AgentEvent> EventHistory { get; } = [];
     public event EventHandler<AgentEvent>? EventApplied;
+    public event EventHandler<SettledPermission>? PermissionSettled;
+    public sealed record SettledPermission(string EventId, string Decision);
     public int SessionCount => Sessions.Count;
     public bool HasSessions => Sessions.Count > 0;
     public bool IsIdle => !HasSessions;
@@ -53,7 +55,7 @@ public sealed class DesktopSessionStore : INotifyPropertyChanged
         Apply(agentEvent);
         var pending = new TaskCompletionSource<PipeMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[agentEvent.EventId] = new PendingResponse(agentEvent.SessionId, pending);
-        cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
+        cancellationToken.Register(() => Abandon(agentEvent.EventId));
         return pending.Task;
     }
 
@@ -62,12 +64,27 @@ public sealed class DesktopSessionStore : INotifyPropertyChanged
         if (!_pending.Remove(eventId, out var pending)) return false;
         _machine.ResolvePending(pending.SessionId, eventId, DateTimeOffset.UtcNow);
         if (_machine.TryGet(pending.SessionId, out var snapshot) && snapshot is not null) ReplaceVisible(snapshot);
-        return pending.Completion.TrySetResult(new PipeMessage(
+        var accepted = pending.Completion.TrySetResult(new PipeMessage(
             PipeMessageType.ActionResponse,
             Guid.NewGuid().ToString("N"),
             AckFor: eventId,
             Action: action,
             ResponseText: responseText));
+        if (accepted) PermissionSettled?.Invoke(this, new SettledPermission(eventId, DecisionFor(action)));
+        return accepted;
+    }
+
+    private static string DecisionFor(UserAction action) => action switch
+    {
+        UserAction.Approve or UserAction.AlwaysAllow => "allow",
+        UserAction.Deny => "deny",
+        _ => "gone"
+    };
+
+    private void Abandon(string eventId)
+    {
+        if (_pending.Remove(eventId, out var pending) && pending.Completion.TrySetCanceled())
+            PermissionSettled?.Invoke(this, new SettledPermission(eventId, "gone"));
     }
 
     public bool ResolveCurrent(UserAction action)
@@ -87,9 +104,7 @@ public sealed class DesktopSessionStore : INotifyPropertyChanged
             if (!activeIds.Contains(Sessions[i].SessionId)) Sessions.RemoveAt(i);
         foreach (var eventId in _pending.Where(pair => !activeIds.Contains(pair.Value.SessionId))
                      .Select(pair => pair.Key).ToArray())
-        {
-            if (_pending.Remove(eventId, out var pending)) pending.Completion.TrySetCanceled();
-        }
+            Abandon(eventId);
         OnPropertyChanged(nameof(SessionCount));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(IsIdle));
@@ -104,9 +119,7 @@ public sealed class DesktopSessionStore : INotifyPropertyChanged
         if (visible is not null) Sessions.Remove(visible);
         foreach (var eventId in _pending.Where(pair => pair.Value.SessionId == sessionId)
                      .Select(pair => pair.Key).ToArray())
-        {
-            if (_pending.Remove(eventId, out var pending)) pending.Completion.TrySetCanceled();
-        }
+            Abandon(eventId);
         OnPropertyChanged(nameof(SessionCount));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(IsIdle));

@@ -32,6 +32,13 @@ foreach ($name in @("CodeIsland.Bridge.exe", "CodeIsland.Bridge.dll", "CodeIslan
     Copy-Item -LiteralPath (Join-Path $bridgeStaging $name) -Destination (Join-Path $staging $name) -Force
 }
 
+$feishuBridge = Join-Path $artifacts "feishu\feishu-bridge.exe"
+if (Test-Path -LiteralPath $feishuBridge) {
+    Copy-Item -LiteralPath $feishuBridge -Destination (Join-Path $staging "feishu-bridge.exe") -Force
+} else {
+    Write-Warning "feishu-bridge.exe was not found at $feishuBridge. This package will not include Feishu remote approval."
+}
+
 $zip = Join-Path $artifacts "CodeIsland-Windows-$version-$Runtime.zip"
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
 Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zip -CompressionLevel Optimal

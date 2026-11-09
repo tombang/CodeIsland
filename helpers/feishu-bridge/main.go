@@ -197,7 +197,7 @@ func (b *bridge) serve(ctx context.Context, appID, secret string) {
 			if paired {
 				b.emitStatus("online", "长连接已就绪，审批会发到已绑定的飞书。")
 			} else {
-				b.emitStatus("online", "长连接已就绪。给机器人发一条私聊后再在 Mac 上绑定。")
+				b.emitStatus("online", "长连接已就绪。给机器人发一条私聊后再在 CodeIsland 里绑定。")
 			}
 		}),
 		larkws.WithOnDisconnected(func() {
@@ -258,9 +258,9 @@ func (b *bridge) onMessage(_ context.Context, event *larkim.P2MessageReceiveV1) 
 		b.reply(*message.MessageId, "这个机器人只给已绑定的飞书账号发审批。")
 	case arm:
 		b.emit(map[string]any{"op": "pair_candidate", "open_id": openID})
-		b.reply(*message.MessageId, "已收到。请回到 Mac 的 CodeIsland 设置里点「绑定这个账号」。文字不会批准命令。")
+		b.reply(*message.MessageId, "已收到。请回到 CodeIsland 设置里点「绑定这个账号」。文字不会批准命令。")
 	default:
-		b.reply(*message.MessageId, "请先在 Mac 的 CodeIsland 设置里点「开始绑定」，再给机器人发消息。")
+		b.reply(*message.MessageId, "请先在 CodeIsland 设置里点「开始绑定」，再给机器人发消息。")
 	}
 	return nil
 }
@@ -277,14 +277,14 @@ func (b *bridge) onCard(_ context.Context, event *callback.CardActionTriggerEven
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.openID == "" || openID != b.openID {
-		return toast("error", "这个飞书账号不能审批这台 Mac。"), nil
+		return toast("error", "这个飞书账号不能审批这台电脑。"), nil
 	}
 	track := b.cards[requestID]
 	if track == nil || track.done {
 		return toast("error", "这条审批已经结束。"), nil
 	}
 	if time.Now().Before(track.inflightUntil) {
-		return toast("info", "正在让 Mac 处理，请不要重复点。"), nil
+		return toast("info", "正在让这台电脑处理，请不要重复点。"), nil
 	}
 	track.inflightUntil = time.Now().Add(20 * time.Second)
 	b.emitLocked(map[string]any{
@@ -294,10 +294,10 @@ func (b *bridge) onCard(_ context.Context, event *callback.CardActionTriggerEven
 		"open_id":    openID,
 	})
 	return &callback.CardActionTriggerResponse{
-		Toast: toastBody("info", "已送到 Mac，等待这台电脑执行。"),
+		Toast: toastBody("info", "已送到这台电脑，等待执行。"),
 		Card: &callback.Card{
 			Type: "raw",
-			Data: cardDocument(cardText("处理中", "已点「"+decisionLabel(decision)+"」。正在等 Mac 确认。"), "orange", false, "", ""),
+			Data: cardDocument(cardText("处理中", "已点「"+decisionLabel(decision)+"」。正在等这台电脑确认。"), "orange", false, "", ""),
 		},
 	}, nil
 }

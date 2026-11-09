@@ -15,8 +15,9 @@ public partial class SettingsWindow : Window
     private readonly Action<AppSettings> _applied;
     private AppSettings _settings;
     private readonly StartupRegistration _startup = new();
+    private readonly FeishuController? _feishu;
 
-    public SettingsWindow(SettingsStore store, AppSettings settings, Action<AppSettings> applied, Func<string> hotKeyStatus)
+    public SettingsWindow(SettingsStore store, AppSettings settings, Action<AppSettings> applied, Func<string> hotKeyStatus, FeishuController? feishu = null)
     {
         InitializeComponent();
         var iconPath = Path.Combine(AppContext.BaseDirectory, "source", "codeisland.png");
@@ -29,6 +30,12 @@ public partial class SettingsWindow : Window
         _store = store;
         _settings = settings;
         _applied = applied;
+        _feishu = feishu;
+        if (_feishu is not null)
+        {
+            _feishu.Changed += OnFeishuChanged;
+            Closed += (_, _) => _feishu.Changed -= OnFeishuChanged;
+        }
         LanguageBox.SelectionChanged += (_, _) => RefreshAllLanguage();
         LanguageBox.PreviewMouseLeftButtonDown += (_, _) => LanguageBox.IsDropDownOpen = true;
         DisplayModeBox.PreviewMouseLeftButtonDown += (_, _) => DisplayModeBox.IsDropDownOpen = true;
@@ -92,7 +99,21 @@ public partial class SettingsWindow : Window
         ["SESSION CLEANUP (MINUTES)"] = "会话清理时间（分钟）", ["Hide panel in full-screen applications"] = "在全屏应用中隐藏面板", ["Inactive sessions are removed automatically after this period."] = "非活动会话将在此时间后自动移除。", ["Maximum visible sessions"] = "最大可见会话数", ["Event history limit"] = "事件历史记录上限",
         ["Play sounds for session events"] = "为会话事件播放声音", ["Sounds are played for start, approval, completion and error events."] = "在开始、审批、完成和错误事件发生时播放声音。", ["REFRESH"] = "刷新", ["TOOL"] = "工具", ["EXE"] = "程序", ["HOOK"] = "挂钩", ["HEALTH"] = "健康状态", ["STATUS"] = "状态", ["ACTIONS"] = "操作", ["INSTALL"] = "安装", ["REPAIR"] = "修复", ["REMOVE"] = "移除",
         ["Toggle panel"] = "显示或隐藏面板", ["Approve request"] = "批准请求", ["Deny request"] = "拒绝请求", ["Format: Ctrl+Shift+I, Alt+Shift+A, or Win+Ctrl+D"] = "格式：Ctrl+Shift+I、Alt+Shift+A 或 Win+Ctrl+D", ["CODEISLAND FOR WINDOWS"] = "CODEISLAND WINDOWS 版", ["Version 0.2.1"] = "版本 0.2.1", ["Real-time AI coding agent status panel."] = "实时 AI 编程代理状态面板。", ["MIT License"] = "MIT 许可证",
-        ["IMPORT"] = "导入", ["EXPORT"] = "导出", ["DEFAULTS"] = "恢复默认值", ["CANCEL"] = "取消", ["SAVE"] = "保存", ["Minimize"] = "最小化", ["Close"] = "关闭", ["Shortcuts are not registered yet."] = "快捷键尚未注册。", ["Shortcuts are unavailable."] = "快捷键不可用。"
+        ["IMPORT"] = "导入", ["EXPORT"] = "导出", ["DEFAULTS"] = "恢复默认值", ["CANCEL"] = "取消", ["SAVE"] = "保存", ["Minimize"] = "最小化", ["Close"] = "关闭", ["Shortcuts are not registered yet."] = "快捷键尚未注册。", ["Shortcuts are unavailable."] = "快捷键不可用。",
+        ["FEISHU"] = "飞书", ["FEISHU REMOTE APPROVAL"] = "飞书远程审批",
+        ["Send permission requests to a bound Feishu private chat."] = "把权限请求发到已绑定的飞书私聊。",
+        ["Text is never an approval, and Feishu cannot choose Always allow."] = "文字不能批准，飞书上也没有「始终允许」。",
+        ["Send permission requests to Feishu"] = "把权限请求发到飞书",
+        ["APP ID"] = "APP ID", ["APP SECRET"] = "APP SECRET",
+        ["The App Secret stays in your user profile, not in settings.json."] = "App Secret 只放在当前用户目录，不会写入 settings.json。",
+        ["An App Secret is already saved on this PC. Leave the field blank to keep it."] = "本机已经保存了 App Secret。留空则保持不变。",
+        ["CLEAR SECRET"] = "清除密钥", ["START BINDING"] = "开始绑定", ["BIND THIS ACCOUNT"] = "绑定这个账号", ["BIND AGAIN"] = "重新绑定", ["UNBIND"] = "解除绑定",
+        ["Not connected."] = "未连接。",
+        ["Allow Feishu to start a Codex task"] = "允许飞书发起 Codex 任务",
+        ["DEFAULT TASK DIRECTORY"] = "默认任务目录",
+        ["Use /cd to change it, /task to start, /stop to stop, and /status to look."] = "用 /cd 换目录，/task 开始，/stop 停止，/status 查看。",
+        ["Could not save the App Secret."] = "没有保存 App Secret。",
+        ["Save the App ID and App Secret first."] = "请先保存 App ID 和 App Secret。"
     };
 
     private bool IsChinese => L10n.ResolveLanguage((LanguageBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "zh-CN") == "zh-CN";
@@ -159,6 +180,11 @@ public partial class SettingsWindow : Window
         ToggleShortcutBox.Text = settings.ToggleShortcut;
         ApproveShortcutBox.Text = settings.ApproveShortcut;
         DenyShortcutBox.Text = settings.DenyShortcut;
+        FeishuEnabledBox.IsChecked = settings.FeishuEnabled;
+        FeishuAppIdBox.Text = settings.FeishuAppId;
+        FeishuTaskEnabledBox.IsChecked = settings.FeishuTaskEnabled;
+        FeishuTaskDirectoryBox.Text = settings.FeishuTaskDirectory;
+        RefreshFeishuState();
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -168,6 +194,16 @@ public partial class SettingsWindow : Window
         {
             ShortcutStatus.Text = ex.Message;
             return;
+        }
+        var typedSecret = FeishuSecretBox.Password;
+        if (!string.IsNullOrWhiteSpace(typedSecret))
+        {
+            if (_feishu is null || !_feishu.TrySaveSecret(typedSecret))
+            {
+                GeneralStatus.Text = Text("Could not save the App Secret.", "没有保存 App Secret。");
+                return;
+            }
+            FeishuSecretBox.Password = "";
         }
         _store.Save(_settings);
         try
@@ -194,6 +230,7 @@ public partial class SettingsWindow : Window
     private void OnDefaults(object sender, RoutedEventArgs e)
     {
         _settings = new AppSettings();
+        FeishuSecretBox.Password = "";
         ApplyToForm(_settings);
         GeneralStatus.Text = Text("Defaults loaded. Select Save to apply them.", "已加载默认设置。选择“保存”以应用。");
     }
@@ -251,7 +288,12 @@ public partial class SettingsWindow : Window
             EventHistoryLimit = Parse(HistoryLimitBox.Text, _settings.EventHistoryLimit),
             ToggleShortcut = normalized[0],
             ApproveShortcut = normalized[1],
-            DenyShortcut = normalized[2]
+            DenyShortcut = normalized[2],
+            FeishuEnabled = FeishuEnabledBox.IsChecked == true,
+            FeishuAppId = FeishuAppIdBox.Text,
+            FeishuOpenId = _feishu?.OpenId ?? _settings.FeishuOpenId,
+            FeishuTaskEnabled = FeishuTaskEnabledBox.IsChecked == true,
+            FeishuTaskDirectory = FeishuTaskDirectoryBox.Text
         }).Validate();
     }
     private void OnRefreshHooks(object sender, RoutedEventArgs e) => RefreshHooks();
@@ -301,4 +343,76 @@ public partial class SettingsWindow : Window
     }
 
     private enum HookOperation { Install, Repair, Uninstall }
+
+    private void OnFeishuChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(OnFeishuChanged);
+            return;
+        }
+        RefreshFeishuState();
+    }
+
+    private void RefreshFeishuState()
+    {
+        if (_feishu is null)
+        {
+            FeishuStatusText.Text = Text("Not connected.", "未连接。");
+            return;
+        }
+        FeishuStatusText.Text = string.IsNullOrWhiteSpace(_feishu.StatusText)
+            ? Text("Not connected.", "未连接。")
+            : _feishu.StatusText;
+        FeishuSecretHint.Text = _feishu.HasSecret
+            ? Text("An App Secret is already saved on this PC. Leave the field blank to keep it.", "本机已经保存了 App Secret。留空则保持不变。")
+            : Text("The App Secret stays in your user profile, not in settings.json.", "App Secret 只放在当前用户目录，不会写入 settings.json。");
+        var paired = _feishu.IsPaired;
+        FeishuArmButton.Visibility = paired ? Visibility.Collapsed : Visibility.Visible;
+        FeishuRebindButton.Visibility = paired ? Visibility.Visible : Visibility.Collapsed;
+        FeishuUnbindButton.Visibility = paired ? Visibility.Visible : Visibility.Collapsed;
+        var candidate = _feishu.PairCandidateOpenId;
+        var showCandidate = !paired && !string.IsNullOrWhiteSpace(candidate);
+        FeishuBindButton.Visibility = showCandidate ? Visibility.Visible : Visibility.Collapsed;
+        FeishuCandidateText.Visibility = showCandidate ? Visibility.Visible : Visibility.Collapsed;
+        FeishuCandidateText.Text = showCandidate ? candidate! : "";
+    }
+
+    private void OnFeishuClearSecret(object sender, RoutedEventArgs e)
+    {
+        FeishuSecretBox.Password = "";
+        _feishu?.ClearSecret();
+        RefreshFeishuState();
+    }
+
+    private void OnFeishuArm(object sender, RoutedEventArgs e)
+    {
+        if (_feishu is null) return;
+        if (!string.Equals(FeishuAppIdBox.Text.Trim(), _feishu.AppId, StringComparison.Ordinal)
+            || FeishuSecretBox.Password.Length > 0)
+        {
+            FeishuStatusText.Text = Text("Save the App ID and App Secret first.", "请先保存 App ID 和 App Secret。");
+            return;
+        }
+        _feishu.ArmBind();
+    }
+
+    private void OnFeishuBind(object sender, RoutedEventArgs e)
+    {
+        _feishu?.ConfirmBind();
+        RefreshFeishuState();
+    }
+
+    private void OnFeishuRebind(object sender, RoutedEventArgs e)
+    {
+        _feishu?.Unbind();
+        _feishu?.ArmBind();
+        RefreshFeishuState();
+    }
+
+    private void OnFeishuUnbind(object sender, RoutedEventArgs e)
+    {
+        _feishu?.Unbind();
+        RefreshFeishuState();
+    }
 }

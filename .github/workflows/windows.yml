@@ -11,10 +11,12 @@ on:
   push:
     paths:
       - "windows/**"
+      - "helpers/feishu-bridge/**"
       - ".github/workflows/windows.yml"
   pull_request:
     paths:
       - "windows/**"
+      - "helpers/feishu-bridge/**"
       - ".github/workflows/windows.yml"
 
 permissions:
@@ -60,6 +62,25 @@ jobs:
         shell: pwsh
         run: dotnet run --project CodeIsland.Windows.Smoke/CodeIsland.Windows.Smoke.csproj -c Release --no-restore
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: helpers/feishu-bridge/go.sum
+
+      - name: Build feishu-bridge.exe
+        shell: pwsh
+        working-directory: helpers/feishu-bridge
+        run: |
+          $dest = Join-Path $env:GITHUB_WORKSPACE "windows\artifacts\feishu"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -trimpath -ldflags "-s -w" -o (Join-Path $dest "feishu-bridge.exe") .
+          if ($LASTEXITCODE -ne 0) { throw "go build failed" }
+          if (-not (Test-Path -LiteralPath (Join-Path $dest "feishu-bridge.exe"))) { throw "feishu-bridge.exe was not built" }
+
       - name: Package
         shell: pwsh
         env:
@@ -78,6 +99,17 @@ jobs:
           if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sha256) { throw "Archive hash mismatch" }
           if (-not (Test-Path artifacts/staging/CodeIsland.Windows.exe)) { throw "Desktop executable missing" }
           if (-not (Test-Path artifacts/staging/CodeIsland.Bridge.exe)) { throw "Bridge executable missing" }
+          if (-not (Test-Path artifacts/staging/feishu-bridge.exe)) { throw "Feishu bridge executable missing" }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $opened = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $archive))
+          try {
+            $found = $false
+            foreach ($entry in $opened.Entries) {
+              $name = $entry.FullName -replace '\\','/'
+              if ($name -eq "feishu-bridge.exe" -or $name.EndsWith("/feishu-bridge.exe")) { $found = $true }
+            }
+            if (-not $found) { throw "Archive is missing feishu-bridge.exe" }
+          } finally { $opened.Dispose() }
           Get-Item $archive | Select-Object FullName, Length | Format-List | Out-String | Write-Host
 
       - name: Upload Windows zip

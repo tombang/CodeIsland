@@ -4,6 +4,7 @@ using CodeIsland.Protocol;
 using CodeIsland.Windows;
 using CodeIsland.Bluetooth;
 using System.IO.Compression;
+using System.Text.Json;
 
 var appIconPath = Path.Combine(AppContext.BaseDirectory, "source", "codeisland.png");
 using (var appIcon = new System.Drawing.Bitmap(appIconPath))
@@ -501,7 +502,101 @@ finally
 {
     if (Directory.Exists(transcriptRoot)) Directory.Delete(transcriptRoot, true);
 }
+VerifyFeishu();
 return 0;
+
+static void VerifyFeishu()
+{
+    Require(!new AppSettings().FeishuEnabled, "Feishu approval must stay off until the user turns it on.");
+    var settingsRoot = Path.Combine(Path.GetTempPath(), "codeisland-feishu-settings-" + Guid.NewGuid().ToString("N"));
+    var secretRoot = Path.Combine(Path.GetTempPath(), "codeisland-feishu-secret-" + Guid.NewGuid().ToString("N"));
+    var codexRoot = Path.Combine(Path.GetTempPath(), "codeisland-feishu-codex-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        var store = new SettingsStore(settingsRoot);
+        store.Save(new AppSettings
+        {
+            FeishuEnabled = true,
+            FeishuAppId = "cli_app",
+            FeishuOpenId = "ou_user",
+            FeishuTaskEnabled = true,
+            FeishuTaskDirectory = @"D:\work"
+        });
+        var loaded = store.Load();
+        Require(loaded.FeishuEnabled && loaded.FeishuAppId == "cli_app" && loaded.FeishuOpenId == "ou_user"
+            && loaded.FeishuTaskEnabled && loaded.FeishuTaskDirectory == @"D:\work",
+            "Feishu settings must round-trip without a secret field.");
+        var json = File.ReadAllText(store.FilePath);
+        Require(!json.Contains("secret", StringComparison.OrdinalIgnoreCase),
+            "settings.json must not contain the App Secret or a secret property.");
+
+        Directory.CreateDirectory(secretRoot);
+        FeishuSecretStore.UsePathForTests(Path.Combine(secretRoot, "feishu-app-secret"));
+        Require(FeishuSecretStore.Save("secret-value-1"), "App Secret file must be saved.");
+        Require(FeishuSecretStore.Load() == "secret-value-1", "App Secret file must load the same value.");
+        FeishuSecretStore.Delete();
+        Require(FeishuSecretStore.Load() is null, "Deleted App Secret must not load.");
+
+        FeishuRedactor.Remember("super-secret-value");
+        var cleaned = FeishuRedactor.Clean("see super-secret-value and sk-" + new string('a', 24) + @" at C:\Users\alice\repo", 500);
+        Require(cleaned is not null && !cleaned.Contains("super-secret-value") && !cleaned.Contains("sk-aaa") && cleaned.Contains('~'),
+            "Feishu text must redact remembered secrets, key-shaped tokens, and home directories.");
+        var block = FeishuRedactor.Clean("hello\n\nworld", 100, keepLines: true);
+        Require(block == "hello\n\nworld", "Task text must keep paragraph breaks.");
+
+        Require(ProviderEnvironment.ReadAssignment("$env:API_GATEWAY_KEY = \"abc123\"\n", "API_GATEWAY_KEY") == "abc123",
+            "PowerShell profile assignments must be parsed without executing them.");
+        Require(ProviderEnvironment.ReadAssignment("export API_GATEWAY_KEY='xyz'\n", "API_GATEWAY_KEY") == "xyz",
+            "Shell exports must be parsed without executing them.");
+        Require(ProviderEnvironment.NamesFromToml("env_key = \"API_GATEWAY_KEY\"\nenv_key='OTHER_KEY'\n").Contains("OTHER_KEY"),
+            "Codex env_key names must be discovered from config.toml text.");
+
+        var (directory, prompt) = FeishuTaskLines.Split(@"C:\repo do the thing", path => path == @"C:\repo");
+        Require(directory == @"C:\repo" && prompt == "do the thing", "A /task directory prefix must be recognized.");
+        var (quoted, quotedPrompt) = FeishuTaskLines.Split("\"C:\\My Repo\" do it", path => path == @"C:\My Repo");
+        Require(quoted == @"C:\My Repo" && quotedPrompt == "do it", "A quoted /task directory must be recognized.");
+        var (none, whole) = FeishuTaskLines.Split("just do it", _ => false);
+        Require(none is null && whole == "just do it", "A task without a real directory must stay one prompt.");
+
+        Directory.CreateDirectory(Path.Combine(codexRoot, "node_modules", "@openai", "codex", "bin"));
+        File.WriteAllText(Path.Combine(codexRoot, "codex.cmd"), "@echo off\r\n");
+        File.WriteAllText(Path.Combine(codexRoot, "node.exe"), "");
+        File.WriteAllText(Path.Combine(codexRoot, "node_modules", "@openai", "codex", "bin", "codex.js"), "");
+        var launch = CodexLauncher.Resolve(Path.Combine(codexRoot, "codex.cmd"));
+        Require(launch is not null && launch.FileName.EndsWith("node.exe", StringComparison.OrdinalIgnoreCase)
+            && launch.PrefixArguments.Count == 1 && launch.PrefixArguments[0].EndsWith("codex.js", StringComparison.OrdinalIgnoreCase),
+            "A codex.cmd shim must launch node with codex.js, not the cmd file.");
+        File.WriteAllText(Path.Combine(codexRoot, "codex.exe"), "");
+        var exe = CodexLauncher.Resolve(Path.Combine(codexRoot, "codex.exe"));
+        Require(exe is not null && exe.FileName.EndsWith("codex.exe", StringComparison.OrdinalIgnoreCase) && exe.PrefixArguments.Count == 0,
+            "codex.exe must be launched directly.");
+
+        using var payload = JsonDocument.Parse("{\"tool_input\":{\"command\":\"git status\"}}");
+        var described = FeishuPermissionText.Describe(new AgentEvent(
+            "permission-text", "session-text", AgentKind.Codex, AgentEventType.PermissionRequest,
+            DateTimeOffset.UtcNow, @"C:\repo", null, null, "shell", payload.RootElement.Clone()));
+        Require(described.Contains("git status"), "Permission cards must show the command inside tool input.");
+
+        var sessions = new DesktopSessionStore();
+        string? settled = null;
+        sessions.PermissionSettled += (_, value) => settled = value.EventId + ":" + value.Decision;
+        var deny = new AgentEvent("permission-feishu", "session-feishu", AgentKind.Codex, AgentEventType.PermissionRequest, DateTimeOffset.UtcNow);
+        _ = sessions.WaitForResponseAsync(deny, CancellationToken.None);
+        Require(sessions.Resolve(deny.EventId, UserAction.Deny) && settled == "permission-feishu:deny",
+            "A Feishu denial must settle that exact request as deny.");
+        var always = deny with { EventId = "permission-always" };
+        _ = sessions.WaitForResponseAsync(always, CancellationToken.None);
+        Require(sessions.Resolve(always.EventId, UserAction.AlwaysAllow) && settled == "permission-always:allow",
+            "Always allow stays on the PC; the Feishu card is only told that the request was allowed.");
+        Console.WriteLine("SMOKE PASS: Feishu approval settings, redaction, task parsing, and Codex launch verified.");
+    }
+    finally
+    {
+        FeishuSecretStore.UsePathForTests(null);
+        foreach (var path in new[] { settingsRoot, secretRoot, codexRoot })
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+    }
+}
 
 static void Require(bool condition, string message)
 {

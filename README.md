@@ -320,7 +320,7 @@ Cowork runs inside Claude Desktop's sandbox, where hooks never fire, so CodeIsla
 
 <br>
 
-**Settings → Behavior → Feishu remote approval** can answer a permission request from a private Feishu chat: Allow once, or Deny. It is not the one-way Feishu webhook under Push notifications, and a text reply never approves a command. Use a company self-built bot. The App Secret stays in the Keychain. Turn the long connection on here before saving the Feishu event and card subscriptions, keep the bot available only to yourself, and do not add it to a group. The card has no Always allow. A timeout, a disconnect, another account, or a second tap on the same card does not allow the command.
+**Settings → Behavior → Feishu remote approval** can answer a permission request from a private Feishu chat: Allow once, or Deny. It is not the one-way Feishu webhook under Push notifications, and a text reply never approves a command. Use a company self-built bot. The App Secret stays in `~/.codeisland/feishu-app-secret` on this computer, not in preferences. The Windows build has the same private-chat approval and `/task` flow under Settings → Feishu. Turn the long connection on here before saving the Feishu event and card subscriptions, keep the bot available only to yourself, and do not add it to a group. The card has no Always allow. A timeout, a disconnect, another account, or a second tap on the same card does not allow the command.
 
 </details>
 
