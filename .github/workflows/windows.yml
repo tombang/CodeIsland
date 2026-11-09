@@ -56,7 +56,9 @@ jobs:
         shell: pwsh
         run: |
           dotnet build CodeIsland.Windows/CodeIsland.Windows.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw "Windows build failed" }
           dotnet build CodeIsland.Bridge/CodeIsland.Bridge.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw "Bridge build failed" }
 
       - name: Run smoke tests
         shell: pwsh

@@ -43,7 +43,7 @@ public static class FeishuTaskLines
         return path;
     }
 
-    private static (string Token, string Rest) FirstToken(string text)
+    private static (string Token, string Remainder) FirstToken(string text)
     {
         if (text.Length == 0) return ("", "");
         if (text[0] is '"' or '\'')
