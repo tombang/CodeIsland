@@ -50,6 +50,7 @@ CodeIsland for Windows 是一款置顶显示的紧凑型 AI 编程智能体状�
 | Factory Droid | 支持 | 支持 | 终端/工作目录 |
 | CodeBuddy | 支持 | 支持 | 应用/终端 |
 | GitHub Copilot CLI | 支持 | 取决于 Hook 能力 | 终端/工作目录 |
+| Kiro CLI | 支持，需用 `kiro --agent codeisland` 启动 | 这组事件没有权限请求 | 终端/工作目录 |
 
 具体事件覆盖范围取决于各工具公开的 Hook API，不同版本之间可能存在差异。
 

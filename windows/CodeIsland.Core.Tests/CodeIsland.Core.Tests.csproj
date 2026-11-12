@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CodeIsland.Core\CodeIsland.Core.csproj" />
     <ProjectReference Include="..\CodeIsland.Protocol\CodeIsland.Protocol.csproj" />
+    <ProjectReference Include="..\CodeIsland.Hooks\CodeIsland.Hooks.csproj" />
   </ItemGroup>
 
 </Project>

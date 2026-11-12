@@ -51,6 +51,7 @@ Hook definitions are currently included for the following Windows tools:
 | Factory Droid | Yes | Yes | Terminal/workspace |
 | CodeBuddy | Yes | Yes | App/terminal |
 | GitHub Copilot CLI | Yes | Hook-dependent | Terminal/workspace |
+| Kiro CLI | Yes, after `kiro --agent codeisland` | No permission hook in this set | Terminal/workspace |
 
 Event coverage depends on the hook API exposed by each tool and may vary between tool versions.
 

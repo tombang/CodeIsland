@@ -15,5 +15,6 @@ public enum AgentKind
     OpenCode,
     Kimi,
     Cline,
-    Pi
+    Pi,
+    Kiro
 }

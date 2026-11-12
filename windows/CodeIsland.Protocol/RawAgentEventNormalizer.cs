@@ -37,8 +37,9 @@ public static class RawAgentEventNormalizer
         var normalized = new string((value ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
         return normalized switch
         {
-            "sessionstart" => AgentEventType.SessionStart,
+            "sessionstart" or "agentspawn" => AgentEventType.SessionStart,
             "sessioncreated" => AgentEventType.SessionStart,
+            "userpromptsubmit" => AgentEventType.Message,
             "sessionend" or "sessionidle" or "stop" => AgentEventType.SessionEnd,
             "pretooluse" or "toolexecutebefore" or "toolstart" => AgentEventType.ToolStart,
             "posttooluse" or "toolexecuteafter" or "toolend" => AgentEventType.ToolEnd,
@@ -57,7 +58,8 @@ public static class RawAgentEventNormalizer
         "cursor" => AgentKind.Cursor, "copilot" => AgentKind.Copilot, "trae" => AgentKind.Trae,
         "qoder" => AgentKind.Qoder, "factory" or "droid" => AgentKind.Factory,
         "codebuddy" => AgentKind.CodeBuddy, "opencode" => AgentKind.OpenCode, "kimi" => AgentKind.Kimi,
-        "cline" => AgentKind.Cline, "pi" => AgentKind.Pi, _ => AgentKind.Unknown
+        "cline" => AgentKind.Cline, "pi" => AgentKind.Pi,
+        "kiro" or "kiro-cli" or "kirocli" => AgentKind.Kiro, _ => AgentKind.Unknown
     };
 
     private static string? FirstString(JsonElement element, params string[] names)

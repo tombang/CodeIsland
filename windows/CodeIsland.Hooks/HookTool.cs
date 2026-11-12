@@ -14,7 +14,7 @@ public sealed record HookTool(
     HookTimeoutUnit TimeoutUnit,
     string? SourceTag = null);
 
-public enum HookConfigurationFormat { Claude, EventMap, Cursor, OpenCode }
+public enum HookConfigurationFormat { Claude, EventMap, Cursor, OpenCode, KiroAgent }
 
 // Each CLI owns its hook-schema timeout unit; JSON config values must not be converted.
 public enum HookTimeoutUnit { Seconds, Milliseconds }
@@ -59,7 +59,13 @@ public static class KnownTools
             ["SessionStart", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"], HookConfigurationFormat.Claude, 5, HookTimeoutUnit.Seconds),
         new(AgentKind.Copilot, "GitHub Copilot CLI", ["copilot.exe", "copilot.cmd", "copilot"],
             [@".copilot\hooks\codeisland.json"], "codeisland-copilot",
-            ["sessionStart", "preToolUse", "postToolUse", "sessionEnd"], HookConfigurationFormat.EventMap, 5, HookTimeoutUnit.Seconds)
+            ["sessionStart", "preToolUse", "postToolUse", "sessionEnd"], HookConfigurationFormat.EventMap, 5, HookTimeoutUnit.Seconds),
+        // Kiro only runs hooks from this agent file. Launch with `kiro --agent codeisland`.
+        // timeout_ms is milliseconds. These events do not include a permission request.
+        new(AgentKind.Kiro, "Kiro CLI", ["kiro.exe", "kiro.cmd", "kiro"],
+            [@".kiro\agents\codeisland.json"], "codeisland-kiro",
+            ["agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"],
+            HookConfigurationFormat.KiroAgent, 5000, HookTimeoutUnit.Milliseconds, "kiro")
     ];
 
     public static int TimeoutFor(HookTool tool, string eventName) =>
